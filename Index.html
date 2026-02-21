@@ -108,7 +108,11 @@
         [draggable="true"] { cursor: grab; }
         .dragging { opacity: 0.5; transform: scale(0.98); }
         .drag-over-sort { border-top: 4px solid var(--accent); }
-        .target-card.drag-over-add, .card.drag-over-add { 
+        .column.drag-over-column {
+            background: #dbeafe;
+            border: 2px dashed var(--accent);
+        }
+        .target-card.drag-over-add, .card.drag-over-add {
             border: 2px dashed var(--accent); 
             background-color: var(--focus-bg); 
         }
@@ -344,7 +348,7 @@
     
     <div class="resizer" id="resizer1"></div>
     
-    <div class="column" id="col2" style="width: 45%;">
+    <div class="column" id="col2" style="width: 45%;" ondragover="handleDragOver(event)" ondragenter="dragEnterColumn(event, 'task')" ondragleave="dragLeaveColumn(event, 'task')" ondrop="dropOnColumn(event, 'task')">
         <div class="col-header">
             <span>🔥 Active Stories</span>
             <div style="display:flex; align-items:center;">
@@ -365,7 +369,7 @@
     
     <div class="resizer" id="resizer2"></div>
     
-    <div class="column" id="col3" style="width: 30%;">
+    <div class="column" id="col3" style="width: 30%;" ondragover="handleDragOver(event)" ondragenter="dragEnterColumn(event, 'target')" ondragleave="dragLeaveColumn(event, 'target')" ondrop="dropOnColumn(event, 'target')">
         <div class="col-header">
             <span>🌱 Long Term</span>
             <div style="display:flex; align-items:center;">
@@ -379,7 +383,8 @@
 
 <script>
     let data = { inbox: [], tasks: [], completed: [], targets: [], colWidths: { c1: "25%", c2: "45%", c3: "30%" } };
-    let dragHandleActive = false; 
+    let dragHandleActive = false;
+    let currentDragType = null;
 
     // Safe string escaper
     function esc(str) {
@@ -925,39 +930,89 @@
         if (draggableEl) draggableEl.setAttribute('draggable', 'true');
     }
     function handleDragStart(e, i, t) {
-        document.body.classList.add('dragging-active'); 
-        e.dataTransfer.setData("application/json", JSON.stringify({ index: i, type: t })); 
+        currentDragType = t;
+        document.body.classList.add('dragging-active');
+        e.dataTransfer.setData("application/json", JSON.stringify({ index: i, type: t }));
         e.dataTransfer.setDragImage(e.target.closest('.card, .target-card'), 0, 0);
-        e.target.closest('.card, .target-card').classList.add('dragging'); 
+        e.target.closest('.card, .target-card').classList.add('dragging');
     }
-    function handleDragEnd(e) { 
-        document.body.classList.remove('dragging-active'); 
-        e.target.classList.remove('dragging'); 
-        e.target.removeAttribute('draggable'); 
-        document.querySelectorAll('.drag-over-sort, .drag-over-add').forEach(el => el.classList.remove('drag-over-sort', 'drag-over-add')); 
+    function handleDragEnd(e) {
+        currentDragType = null;
+        document.body.classList.remove('dragging-active');
+        e.target.classList.remove('dragging');
+        e.target.removeAttribute('draggable');
+        document.querySelectorAll('.drag-over-sort, .drag-over-add').forEach(el => el.classList.remove('drag-over-sort', 'drag-over-add'));
+        document.querySelectorAll('.drag-over-column').forEach(el => el.classList.remove('drag-over-column'));
     }
     function handleDragOver(e, type) { e.preventDefault(); }
     function dragEnterTask(e) { e.currentTarget.classList.add('drag-over-sort'); }
     function dragLeaveTask(e) { e.currentTarget.classList.remove('drag-over-sort', 'drag-over-add'); }
-    function dropTask(e, ti, targetType) { 
-        e.preventDefault(); 
-        e.currentTarget.classList.remove('drag-over-sort', 'drag-over-add'); 
-        try { 
-            const d = JSON.parse(e.dataTransfer.getData("application/json")); 
+    function dropTask(e, ti, targetType) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.currentTarget.classList.remove('drag-over-sort', 'drag-over-add');
+        try {
+            const d = JSON.parse(e.dataTransfer.getData("application/json"));
             const sourceArr = (d.type === 'task') ? data.tasks : (d.type === 'target') ? data.targets : data.inbox;
             const targetArr = (targetType === 'task') ? data.tasks : data.targets;
 
-            if(d.type === targetType) { 
-                const m = sourceArr.splice(d.index, 1)[0]; 
-                targetArr.splice(ti, 0, m); 
-                saveData(); renderAll(); 
-            } else if (d.type === 'inbox') { 
+            if (d.type === targetType) {
+                // Same-column reorder
+                const m = sourceArr.splice(d.index, 1)[0];
+                targetArr.splice(ti, 0, m);
+                saveData(); renderAll();
+            } else if (d.type === 'inbox') {
+                // Inbox item → subtask of dropped card
                 const item = data.inbox[d.index];
                 targetArr[ti].subtasks.push({ text: item.text, done: false, date: "", estimate: "" });
                 data.inbox.splice(d.index, 1);
                 saveData(); renderAll();
+            } else if (d.type === 'task' || d.type === 'target') {
+                // Cross-column card move: insert at position ti
+                const m = sourceArr.splice(d.index, 1)[0];
+                if (m && m.status === 'active') {
+                    m.status = 'todo';
+                    data.tasks.forEach(t => { if (t) t.collapsed = false; });
+                    data.targets.forEach(t => { if (t) t.collapsed = false; });
+                }
+                targetArr.splice(ti, 0, m);
+                saveData(); renderAll();
             }
-        } catch(e){ console.error("Drop failed:", e); } 
+        } catch (err) { console.error("Drop failed:", err); }
+    }
+    function dragEnterColumn(e, targetType) {
+        // Only highlight column when a card from the opposite column is being dragged
+        if ((currentDragType === 'task' && targetType === 'target') ||
+            (currentDragType === 'target' && targetType === 'task')) {
+            e.currentTarget.classList.add('drag-over-column');
+        }
+    }
+    function dragLeaveColumn(e, targetType) {
+        // Only clear when the drag truly exits the column (not just moves to a child element)
+        if (!e.relatedTarget || !e.currentTarget.contains(e.relatedTarget)) {
+            e.currentTarget.classList.remove('drag-over-column');
+        }
+    }
+    function dropOnColumn(e, targetType) {
+        e.preventDefault();
+        e.currentTarget.classList.remove('drag-over-column');
+        try {
+            const d = JSON.parse(e.dataTransfer.getData("application/json"));
+            // Only handle cross-column card drags; same-column and inbox handled elsewhere
+            if (!d || d.type === 'subtask' || d.type === 'inbox' || d.type === targetType) return;
+
+            const sourceArr = (d.type === 'task') ? data.tasks : data.targets;
+            const targetArr = (targetType === 'task') ? data.tasks : data.targets;
+
+            const m = sourceArr.splice(d.index, 1)[0];
+            if (m && m.status === 'active') {
+                m.status = 'todo';
+                data.tasks.forEach(t => { if (t) t.collapsed = false; });
+                data.targets.forEach(t => { if (t) t.collapsed = false; });
+            }
+            targetArr.push(m);
+            saveData(); renderAll();
+        } catch (err) { console.error("Column drop failed:", err); }
     }
     function handleSubDragStart(e, listType, taskIndex, subIndex) {
         e.stopPropagation();
