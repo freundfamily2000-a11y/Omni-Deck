@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Command Center v56 (Logic Updates)</title>
+    <title>Omni-Deck v63 (Backup & Restore)</title>
     <link rel="icon" type="image/png" href="image_0.png">
     <style>
         :root {
@@ -27,7 +27,7 @@
             /* Status Colors */
             --date-overdue: #ef4444;   /* Red */
             --date-today: #16a34a;     /* Green */
-            --date-future: #334155;    /* Black (Matches Low Prio) */
+            --date-future: #334155;    /* Black */
             
             /* Priority Colors for Title */
             --prio-high: #dc2626;   /* Red */
@@ -153,21 +153,39 @@
             padding-bottom: 2px;
         }
         
-        /* Updated Title Colors */
+        /* Updated Title Colors & Logic */
+        .title-container { flex-grow: 1; display: flex; align-items: center; min-width: 0; position: relative; }
+        
         input.title-input { 
             font-weight: bold; border: none; background: transparent; width: 100%; 
             text-overflow: ellipsis; transition: color 0.2s; 
         }
         /* Explicit specificity for title colors */
-        input.title-input.title-prio-High { color: var(--prio-high) !important; }
-        input.title-input.title-prio-Medium { color: var(--prio-med) !important; }
-        input.title-input.title-prio-Low { color: var(--prio-low) !important; }
+        .title-prio-High { color: var(--prio-high) !important; }
+        .title-prio-Medium { color: var(--prio-med) !important; }
+        .title-prio-Low { color: var(--prio-low) !important; }
 
-        /* ID Field */
+        /* Clickable Title Link */
+        a.title-link {
+            font-weight: bold; 
+            text-decoration: underline; 
+            text-decoration-thickness: 2px;
+            text-overflow: ellipsis; 
+            white-space: nowrap; 
+            overflow: hidden; 
+            display: block; 
+            width: 100%;
+        }
+        a.title-link:hover { opacity: 0.8; }
+        .title-edit-icon {
+            font-size: 0.8rem; cursor: pointer; color: #94a3b8; margin-left: 5px; opacity: 0; transition: opacity 0.2s;
+        }
+        .title-container:hover .title-edit-icon { opacity: 1; }
+
+        /* ID Field - Auto Sizing */
         .input-id { 
-            width: auto !important; 
+            width: 3ch; 
             min-width: 25px; 
-            max-width: 80px;
             flex-shrink: 0; 
             font-size: 0.75rem !important; 
             text-align: center; 
@@ -177,11 +195,11 @@
             border-radius: 4px; 
             margin-left: 5px; 
             padding: 2px 4px !important;
+            transition: width 0.1s;
         }
         .input-id:focus {
             outline: 1px solid var(--accent);
             background: #fff !important;
-            min-width: 60px;
         }
 
         .input-prio { width: auto !important; flex-shrink: 0; max-width: 95px; }
@@ -257,6 +275,7 @@
         .btn-sm { font-size: 0.75rem; padding: 4px 8px; }
         .btn-xs { font-size: 0.7rem; padding: 3px 6px; }
         .btn-backup { background: #3b82f6; color: white; }
+        .btn-restore { background: #f8fafc; color: var(--primary); border: 1px solid #cbd5e1; font-weight: bold; }
         .btn-header-add { background: var(--primary); color: white; font-size: 0.75rem; padding: 4px 10px; font-weight: bold; border-radius: 12px; }
         .btn-header-toggle { background: transparent; color: var(--primary); border: 1px solid var(--primary); font-size: 0.75rem; padding: 2px 6px; margin-right: 5px; border-radius: 4px; }
         .btn-card-del { background: none; border: 1px solid #ef4444; color: #ef4444; font-size: 0.7rem; padding: 3px 8px; border-radius: 4px; }
@@ -265,8 +284,23 @@
         .btn-toggle:hover { color: var(--primary); background: #e2e8f0; border-radius: 4px; }
         .btn-icon-link { background: #3b82f6; color: white; text-decoration: none; padding: 3px 6px; border-radius: 4px; font-size: 0.75rem; }
         
-        .btn-meta-toggle { background: transparent; border: none; color: #94a3b8; cursor: pointer; font-size: 1rem; padding: 0 4px; }
-        .btn-meta-toggle:hover { color: var(--accent); }
+        /* Toggle Switch (Pill Shape) */
+        .toggle-switch {
+            position: relative; display: inline-block; width: 34px; height: 18px; margin-right: 5px; vertical-align: middle;
+        }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #cbd5e1; transition: .3s; border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute; content: ""; height: 12px; width: 12px; left: 3px; bottom: 3px;
+            background-color: white; transition: .3s; border-radius: 50%;
+        }
+        /* Green when ON */
+        input:checked + .slider { background-color: var(--date-today); }
+        input:checked + .slider:before { transform: translateX(16px); }
+
         .btn-done-toggle { background: transparent; border: none; color: #64748b; cursor: pointer; font-size: 0.7rem; text-decoration: underline; margin-left: 10px;}
 
         .completed-section { margin-top: auto; border-top: 2px dashed #cbd5e1; padding-top: 10px; }
@@ -279,10 +313,13 @@
 <body>
 
 <header>
-    <div><h1>Command Center</h1></div>
+    <div><h1>Omni-Deck</h1></div>
     <div style="font-weight:bold; color:#e2e8f0; font-family: 'Courier New', monospace;" id="clock">12:00 PM</div>
     <div style="display:flex; gap:8px; align-items:center;">
-        <button class="btn-backup" onclick="backupData()">⬇ Backup</button>
+        <input type="file" id="importFile" accept=".json" style="display:none;" onchange="restoreData(event)">
+        
+        <button class="btn-restore" onclick="document.getElementById('importFile').click()" title="Upload a Database Backup JSON">⬆ Restore</button>
+        <button class="btn-backup" onclick="backupData()" title="Download Full Database to JSON">⬇ Backup</button>
         <button class="btn-success" onclick="saveData()">Save</button>
         <button class="btn-danger btn-xs" onclick="clearData()" title="Factory Reset" style="margin-left:12px; opacity:0.6;">⚠ Reset</button>
     </div>
@@ -344,36 +381,48 @@
     let data = { inbox: [], tasks: [], completed: [], targets: [], colWidths: { c1: "25%", c2: "45%", c3: "30%" } };
     let dragHandleActive = false; 
 
+    // Safe string escaper
     function esc(str) {
-        if (!str) return "";
+        if (str === null || str === undefined) return "";
         return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
     }
 
+    // Smart Linkify
     function linkify(text) {
-        if (!text) return "";
+        if (!text || typeof text !== 'string') return esc(text);
         const urlRegex = /((https?:\/\/)|(www\.))[^\s]+/ig;
         return text.replace(urlRegex, function(url) {
             let href = url;
             if (!href.match(/^https?:\/\//i)) {
                 href = 'http://' + href;
             }
-            return '<a href="' + href + '" target="_blank">' + url + '</a>';
+            return `<a href="${href}" target="_blank" onclick="event.stopPropagation()">${url}</a>`;
         });
     }
 
     function autoResize(el) {
+        if (!el) return;
         el.style.height = 'auto';
         el.style.height = el.scrollHeight + 'px';
     }
 
+    // Auto-Resize Input (for ID field)
+    function resizeInput(el) {
+        if (!el) return;
+        el.style.width = '3ch'; 
+        const len = el.value ? el.value.length : 0;
+        el.style.width = (len + 2) + "ch";
+    }
+
     function getDateStatusClass(dateStr) {
-        if (!dateStr) return '';
+        if (!dateStr || typeof dateStr !== 'string') return '';
         const today = new Date(); today.setHours(0,0,0,0);
-        const [y, m, d] = dateStr.split('-');
-        const targetDate = new Date(y, m-1, d);
-        if (targetDate < today) return 'overdue'; // Red
-        if (targetDate.getTime() === today.getTime()) return 'today'; // Green
-        return 'future'; // Black
+        const parts = dateStr.split('-');
+        if (parts.length !== 3) return ''; 
+        const targetDate = new Date(parts[0], parts[1]-1, parts[2]);
+        if (targetDate < today) return 'overdue';
+        if (targetDate.getTime() === today.getTime()) return 'today';
+        return 'future';
     }
 
     window.onload = function() {
@@ -381,36 +430,74 @@
         try {
             const saved = localStorage.getItem('baDashboardV5');
             if (saved) data = JSON.parse(saved); 
-        } catch(e) { console.error(e); }
+        } catch(e) { console.error("Error loading saved data", e); }
+        
         sanitizeData();
+        
         if(data.colWidths) {
-            document.getElementById('col1').style.width = data.colWidths.c1;
-            document.getElementById('col2').style.width = data.colWidths.c2;
-            document.getElementById('col3').style.width = data.colWidths.c3;
+            try {
+                if (data.colWidths.c1) document.getElementById('col1').style.width = data.colWidths.c1;
+                if (data.colWidths.c2) document.getElementById('col2').style.width = data.colWidths.c2;
+                if (data.colWidths.c3) document.getElementById('col3').style.width = data.colWidths.c3;
+            } catch (e) {}
         }
         setupResizers(); 
         renderAll();
     };
 
+    // HIGHLY ROBUST SANITIZATION
     function sanitizeData() {
-        if (!data) data = { inbox: [], tasks: [], completed: [], targets: [] };
-        [...data.tasks, ...data.targets].forEach(t => {
-            if(t.priority === 'Very High') t.priority = 'High';
-            if(!t.priority) t.priority = 'Medium';
-            if(!t.subtasks) t.subtasks = [];
-            if(!t.dueDate) t.dueDate = ''; 
-            if(t.collapsed === undefined) t.collapsed = false;
-            if(t.showMeta === undefined) t.showMeta = true; 
-            if(t.showDone === undefined) t.showDone = true; 
-            if(!t.title) t.title = "";
-            if(!t.notes) t.notes = "";
-            if(!t.status) t.status = 'todo';
-            t.subtasks.forEach(st => {
-                if(!st.date) st.date = "";
-                if(!st.estimate) st.estimate = "";
-            });
-        });
-        if(data.kcs) delete data.kcs;
+        try {
+            if (!data || typeof data !== 'object') data = { inbox: [], tasks: [], completed: [], targets: [] };
+            if (!Array.isArray(data.inbox)) data.inbox = [];
+            if (!Array.isArray(data.tasks)) data.tasks = [];
+            if (!Array.isArray(data.completed)) data.completed = [];
+            if (!Array.isArray(data.targets)) data.targets = [];
+
+            const processList = (arr) => {
+                for (let i = 0; i < arr.length; i++) {
+                    let t = arr[i];
+                    if (!t || typeof t !== 'object') {
+                        arr[i] = { title: "Corrupted Task", priority: "Medium", subtasks: [] };
+                        t = arr[i];
+                    }
+                    if (t.priority === 'Very High') t.priority = 'High';
+                    if (!t.priority) t.priority = 'Medium';
+                    
+                    if (!t.subtasks || !Array.isArray(t.subtasks)) t.subtasks = [];
+                    
+                    if (t.dueDate === undefined || t.dueDate === null) t.dueDate = ''; 
+                    if (t.title === undefined || t.title === null) t.title = "";
+                    if (t.notes === undefined || t.notes === null) t.notes = "";
+                    if (t.url === undefined || t.url === null) t.url = "";
+                    if (t.jiraId === undefined || t.jiraId === null) t.jiraId = "";
+                    
+                    if (t.collapsed === undefined) t.collapsed = false;
+                    if (t.showMeta === undefined) t.showMeta = true; 
+                    if (t.showDone === undefined) t.showDone = true; 
+                    if (!t.status) t.status = 'todo';
+
+                    for (let j = 0; j < t.subtasks.length; j++) {
+                        let st = t.subtasks[j];
+                        if (!st || typeof st !== 'object') {
+                            t.subtasks[j] = { text: "Corrupted step", done: false, date: "", estimate: "" };
+                            st = t.subtasks[j];
+                        }
+                        if (st.date === undefined || st.date === null) st.date = "";
+                        if (st.estimate === undefined || st.estimate === null) st.estimate = "";
+                        if (st.text === undefined || st.text === null) st.text = "";
+                        if (typeof st.done !== 'boolean') st.done = !!st.done;
+                    }
+                }
+            };
+
+            processList(data.tasks);
+            processList(data.targets);
+
+            if(data.kcs) delete data.kcs;
+        } catch (e) {
+            console.error("Critical error during sanitization, falling back to safe empty state", e);
+        }
     }
 
     function saveData() {
@@ -424,6 +511,7 @@
         if(btn) { const old = btn.innerText; btn.innerText = "Saved!"; setTimeout(() => btn.innerText = old, 1000); }
     }
     
+    // BACKUP LOGIC (JSON Database)
     function backupData() {
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
@@ -431,154 +519,215 @@
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
     }
 
+    // RESTORE LOGIC
+    function restoreData(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const importedData = JSON.parse(e.target.result);
+                // Validate it looks like our dashboard data
+                if (importedData && (Array.isArray(importedData.tasks) || Array.isArray(importedData.targets) || Array.isArray(importedData.inbox))) {
+                    data = importedData;
+                    sanitizeData(); // Re-run sanitization on new data
+                    saveData();
+                    renderAll();
+                    alert("Database successfully restored!");
+                } else {
+                    alert("Invalid backup file format. Please upload a valid JSON backup.");
+                }
+            } catch (err) {
+                alert("Error reading file. Please ensure it is a valid JSON backup.");
+                console.error(err);
+            }
+            // Reset input so the same file can be uploaded again if needed
+            event.target.value = "";
+        };
+        reader.readAsText(file);
+    }
+
     function renderAll() {
         renderInbox(); renderTasks(); renderCompleted(); renderTargets();
         setTimeout(() => document.querySelectorAll('.notes-edit').forEach(el => autoResize(el)), 10);
+        setTimeout(() => document.querySelectorAll('.input-id').forEach(el => resizeInput(el)), 10);
     }
 
     function renderList(type, listId) {
         const list = document.getElementById(listId); 
+        if (!list) return;
         list.innerHTML = '';
-        const arr = (type === 'task') ? data.tasks : data.targets;
         
+        const arr = (type === 'task') ? data.tasks : data.targets;
+        if (!arr || !Array.isArray(arr)) return;
+
         arr.forEach((item, index) => {
-            const isActive = item.status === 'active';
-            const isCollapsed = isActive ? false : (item.collapsed || false);
-            
-            // Safe Subtask Filtering
-            const safeSubtasks = item.subtasks || [];
-            const datedSubtasks = safeSubtasks.filter(s => s && s.date);
-            const activeDates = datedSubtasks.filter(s => !s.done).map(s => s.date).sort();
-            const nextDate = activeDates.length > 0 ? activeDates[0] : "";
-            const dateClass = getDateStatusClass(nextDate);
-            
-            // Check if all dated subtasks are complete
-            const hasDated = datedSubtasks.length > 0;
-            const allDatedDone = hasDated && datedSubtasks.every(s => s.done);
+            try {
+                if (!item || typeof item !== 'object') return;
 
-            // Determine Title Color
-            let titleColorClass = `title-prio-${item.priority}`;
-            if (allDatedDone) {
-                titleColorClass = 'title-prio-Low'; // Force Black if all dated steps done
-            }
-
-            let subHTML = '';
-            safeSubtasks.forEach((st, sIndex) => {
-                if (!st) return;
-                if (!item.showDone && st.done) return;
-                const subContent = linkify(esc(st.text));
-
-                subHTML += `
-                    <div class="subtask-grid-row" draggable="true" ondragstart="handleSubDragStart(event, '${type}', ${index}, ${sIndex})" ondragover="handleDragOver(event)" ondrop="handleSubDrop(event, '${type}', ${index}, ${sIndex})" ondragend="handleDragEnd(event)">
-                        <input type="checkbox" ${st.done ? 'checked' : ''} onchange="toggleSub('${type}', ${index}, ${sIndex})">
-                        <div class="subtask-input-view ${st.done ? 'done' : ''}" id="subView_${type}_${index}_${sIndex}" onclick="editSub('${type}', ${index}, ${sIndex})" style="display:block">${subContent}</div>
-                        <input type="text" class="subtask-input-edit" id="subEdit_${type}_${index}_${sIndex}" value="${esc(st.text)}" onblur="saveSub('${type}', ${index}, ${sIndex})">
-                        <input type="date" class="sub-date-input" value="${st.date || ''}" onchange="updateSub('${type}', ${index}, ${sIndex}, 'date', this.value)">
-                        <input type="text" class="sub-est-input" value="${esc(st.estimate)}" onchange="updateSub('${type}', ${index}, ${sIndex}, 'estimate', this.value)" placeholder="Est">
-                        <span class="sub-handle" onmousedown="activateDrag(event, this)">☰</span>
-                        <button class="btn-sub-del" onclick="deleteSub('${type}', ${index}, ${sIndex})">×</button>
-                    </div>`;
-            });
-
-            // Meta Section
-            let metaSection = '';
-            let idField = '';
-            let urlBtn = '';
-            let toggleMetaBtn = '';
-            
-            if (type === 'task') {
-                toggleMetaBtn = `<button class="btn-meta-toggle" onclick="toggleMeta('${type}', ${index})" title="Toggle Details">🏷</button>`;
+                const isActive = item.status === 'active';
+                const isCollapsed = isActive ? false : (item.collapsed || false);
                 
-                if(item.showMeta) {
-                    idField = `<input type="text" class="input-id" value="${esc(item.jiraId)}" onchange="updateTask('${type}', ${index}, 'jiraId', this.value)" placeholder="ID #">`;
+                // Safe Subtask Date Logic
+                const safeSubtasks = item.subtasks || [];
+                const datedSubtasks = safeSubtasks.filter(s => s && typeof s.date === 'string' && s.date.trim() !== "");
+                const activeDates = datedSubtasks.filter(s => !s.done).map(s => s.date).sort();
+                const nextDate = activeDates.length > 0 ? activeDates[0] : "";
+                const dateClass = getDateStatusClass(nextDate);
+                
+                const hasDated = datedSubtasks.length > 0;
+                const allDatedDone = hasDated && datedSubtasks.every(s => s.done);
+
+                let titleColorClass = `title-prio-${item.priority}`;
+                if (allDatedDone) titleColorClass = 'title-prio-Low'; 
+
+                let subHTML = '';
+                safeSubtasks.forEach((st, sIndex) => {
+                    if (!st) return;
+                    if (!item.showDone && st.done) return;
+                    const subContent = linkify(esc(st.text));
+
+                    subHTML += `
+                        <div class="subtask-grid-row" draggable="true" ondragstart="handleSubDragStart(event, '${type}', ${index}, ${sIndex})" ondragover="handleDragOver(event)" ondrop="handleSubDrop(event, '${type}', ${index}, ${sIndex})" ondragend="handleDragEnd(event)">
+                            <input type="checkbox" ${st.done ? 'checked' : ''} onchange="toggleSub('${type}', ${index}, ${sIndex})">
+                            <div class="subtask-input-view ${st.done ? 'done' : ''}" id="subView_${type}_${index}_${sIndex}" onclick="editSub('${type}', ${index}, ${sIndex})" style="display:block">${subContent}</div>
+                            <input type="text" class="subtask-input-edit" id="subEdit_${type}_${index}_${sIndex}" value="${esc(st.text)}" onblur="saveSub('${type}', ${index}, ${sIndex})">
+                            <input type="date" class="sub-date-input" value="${st.date || ''}" onchange="updateSub('${type}', ${index}, ${sIndex}, 'date', this.value)">
+                            <input type="text" class="sub-est-input" value="${esc(st.estimate)}" onchange="updateSub('${type}', ${index}, ${sIndex}, 'estimate', this.value)" placeholder="Est">
+                            <span class="sub-handle" onmousedown="activateDrag(event, this)">☰</span>
+                            <button class="btn-sub-del" onclick="deleteSub('${type}', ${index}, ${sIndex})">×</button>
+                        </div>`;
+                });
+
+                // Meta Section
+                let metaSection = '';
+                let idField = '';
+                let toggleMetaBtn = '';
+                let titleField = '';
+
+                // Handle Title Link Logic Safely
+                if(typeof item.url === 'string' && item.url.trim() !== '') {
+                    let safeUrl = item.url.startsWith('http') ? item.url : 'https://' + item.url;
+                    titleField = `
+                        <div class="title-container">
+                            <a href="${safeUrl}" target="_blank" class="title-link ${titleColorClass}">${esc(item.title)}</a>
+                            <span class="title-edit-icon" onclick="editTitle('${type}', ${index})" title="Edit Title">✎</span>
+                            <input type="text" class="title-input ${titleColorClass}" id="titleEdit_${type}_${index}" value="${esc(item.title)}" onblur="saveTitle('${type}', ${index})" style="display:none; margin-left:0;">
+                        </div>`;
+                } else {
+                    titleField = `<input type="text" class="title-input ${titleColorClass}" value="${esc(item.title)}" onchange="updateTask('${type}', ${index}, 'title', this.value)" placeholder="Title">`;
                 }
 
-                if(item.showMeta) {
-                    if(item.url && item.url.trim() !== '') {
-                        let safeUrl = item.url.startsWith('http') ? item.url : 'https://' + item.url;
-                        urlBtn = `<a href="${safeUrl}" target="_blank" class="btn-icon-link" title="Open Link">🔗</a>`;
+                if (type === 'task') {
+                    const checked = item.showMeta ? 'checked' : '';
+                    toggleMetaBtn = `
+                        <label class="toggle-switch" title="Toggle ID/URL">
+                            <input type="checkbox" ${checked} onchange="toggleMeta('${type}', ${index})">
+                            <span class="slider"></span>
+                        </label>`;
+                    
+                    if(item.showMeta) {
+                        idField = `<input type="text" class="input-id" value="${esc(item.jiraId)}" oninput="resizeInput(this); updateTask('${type}', ${index}, 'jiraId', this.value)" placeholder="ID #">`;
                     }
-                    metaSection = `
+
+                    if(item.showMeta) {
+                        metaSection = `
+                            <div class="card-meta">
+                                <select class="input-prio prio-${item.priority}" onchange="updateTask('${type}', ${index}, 'priority', this.value)">
+                                    <option value="High" ${item.priority==='High'?'selected':''}>High</option>
+                                    <option value="Medium" ${item.priority==='Medium'?'selected':''}>Medium</option>
+                                    <option value="Low" ${item.priority==='Low'?'selected':''}>Low</option>
+                                </select>
+                                <input type="text" class="input-url" value="${esc(item.url)}" onchange="updateTask('${type}', ${index}, 'url', this.value)" placeholder="URL">
+                            </div>`;
+                    }
+                } else {
+                     metaSection = `
                         <div class="card-meta">
                             <select class="input-prio prio-${item.priority}" onchange="updateTask('${type}', ${index}, 'priority', this.value)">
                                 <option value="High" ${item.priority==='High'?'selected':''}>High</option>
                                 <option value="Medium" ${item.priority==='Medium'?'selected':''}>Medium</option>
                                 <option value="Low" ${item.priority==='Low'?'selected':''}>Low</option>
                             </select>
-                            <input type="text" class="input-url" value="${esc(item.url)}" onchange="updateTask('${type}', ${index}, 'url', this.value)" placeholder="URL">
-                            ${urlBtn}
                         </div>`;
                 }
-            } else {
-                 metaSection = `
-                    <div class="card-meta">
-                        <select class="input-prio prio-${item.priority}" onchange="updateTask('${type}', ${index}, 'priority', this.value)">
-                            <option value="High" ${item.priority==='High'?'selected':''}>High</option>
-                            <option value="Medium" ${item.priority==='Medium'?'selected':''}>Medium</option>
-                            <option value="Low" ${item.priority==='Low'?'selected':''}>Low</option>
-                        </select>
+
+                const startBtn = isActive 
+                    ? `<button class="btn-action" onclick="setTaskStatus('${type}', ${index}, 'todo')">⏸ Pause</button>` 
+                    : `<button class="btn-primary" onclick="setTaskStatus('${type}', ${index}, 'active')">▶ Start</button>`;
+                
+                const cardClass = type === 'task' ? 'card' : 'target-card';
+                const notesContent = linkify(esc(item.notes));
+
+                list.innerHTML += `
+                    <div class="${cardClass} ${isActive ? 'active-focus' : ''}" ondragstart="handleDragStart(event, ${index}, '${type}')" ondragend="handleDragEnd(event)" ondragover="handleDragOver(event)" ondragenter="dragEnterTask(event)" ondragleave="dragLeaveTask(event)" ondrop="dropTask(event, ${index}, '${type}')">
+                        <div class="card-header">
+                            <div style="flex-grow:1; display:flex; align-items:center; min-width:0; margin-right:10px;">
+                                <span class="drag-handle" onmousedown="activateDrag(event, this)">☰</span>
+                                ${idField}
+                                ${titleField}
+                            </div>
+                            <div style="display:flex; align-items:center; gap:5px; flex-shrink:0;">
+                                ${nextDate ? `<span class="header-calc-date ${dateClass}">${nextDate}</span>` : ''}
+                                ${isActive ? '<span style="color:#2563eb; font-weight:bold; font-size:0.8rem;">FOCUSING</span>' : ''}
+                                ${toggleMetaBtn}
+                                ${!isActive ? `<button class="btn-toggle" onclick="toggleCollapse('${type}', ${index})">${isCollapsed ? '▶' : '▼'}</button>` : ''}
+                            </div>
+                        </div>
+                        
+                        <div class="card-body ${isCollapsed ? 'hidden' : ''}">
+                            ${metaSection}
+                            
+                            <div class="notes-container">
+                                <div class="notes-view" id="notesView_${type}_${index}" onclick="editNotes('${type}', ${index})" style="display:${item.notes ? 'block' : 'none'}">${notesContent}</div>
+                                <textarea class="notes-edit" id="notesEdit_${type}_${index}" placeholder="Notes (URLs auto-link)..." onblur="saveNotes('${type}', ${index})" oninput="autoResize(this)" style="display:${item.notes ? 'none' : 'block'}">${esc(item.notes)}</textarea>
+                            </div>
+                            
+                            <div class="subtasks">
+                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                    <small style="font-size:0.7rem; color:#64748b;">NEXT STEPS:</small>
+                                    <button class="btn-done-toggle" onclick="toggleShowDone('${type}', ${index})">${item.showDone ? 'Hide Done' : 'Show Done'}</button>
+                                </div>
+                                ${subHTML}
+                                <div class="add-step-grid-row">
+                                    <div></div>
+                                    <input type="text" id="subInput_${type}_${index}" class="subtask-input" placeholder="Add step..." onkeypress="handleSubEnter(event, '${type}', ${index})" style="background:white; border:1px solid #cbd5e1;">
+                                    <input type="date" id="subDate_${type}_${index}" class="sub-date-input" onkeypress="handleSubEnter(event, '${type}', ${index})">
+                                    <input type="text" id="subEst_${type}_${index}" class="sub-est-input" placeholder="Est" onkeypress="handleSubEnter(event, '${type}', ${index})">
+                                    <button class="btn-sm btn-action" onclick="addSub('${type}', ${index})">+</button>
+                                </div>
+                            </div>
+                            
+                            <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center; border-top:1px solid #e2e8f0; padding-top:8px;">
+                                <button class="btn-card-del" onclick="deleteTask('${type}', ${index})">Delete</button>
+                                <div style="display:flex; gap:5px;">${startBtn}<button class="btn-success" onclick="completeTask('${type}', ${index})">✅ Done</button></div>
+                            </div>
+                        </div>
                     </div>`;
+            } catch (e) {
+                console.error("Skipping corrupted card at index", index, e);
             }
-
-            const startBtn = isActive 
-                ? `<button class="btn-action" onclick="setTaskStatus('${type}', ${index}, 'todo')">⏸ Pause</button>` 
-                : `<button class="btn-primary" onclick="setTaskStatus('${type}', ${index}, 'active')">▶ Start</button>`;
-            
-            const cardClass = type === 'task' ? 'card' : 'target-card';
-            const notesContent = linkify(esc(item.notes));
-
-            list.innerHTML += `
-                <div class="${cardClass} ${isActive ? 'active-focus' : ''}" ondragstart="handleDragStart(event, ${index}, '${type}')" ondragend="handleDragEnd(event)" ondragover="handleDragOver(event)" ondragenter="dragEnterTask(event)" ondragleave="dragLeaveTask(event)" ondrop="dropTask(event, ${index}, '${type}')">
-                    <div class="card-header">
-                        <div style="flex-grow:1; display:flex; align-items:center; min-width:0; margin-right:10px;">
-                            <span class="drag-handle" onmousedown="activateDrag(event, this)">☰</span>
-                            <input type="text" class="title-input ${titleColorClass}" value="${esc(item.title)}" onchange="updateTask('${type}', ${index}, 'title', this.value)" placeholder="Title">
-                            ${idField}
-                        </div>
-                        <div style="display:flex; align-items:center; gap:5px; flex-shrink:0;">
-                            ${nextDate ? `<span class="header-calc-date ${dateClass}">${nextDate}</span>` : ''}
-                            ${isActive ? '<span style="color:#2563eb; font-weight:bold; font-size:0.8rem;">FOCUSING</span>' : ''}
-                            ${toggleMetaBtn}
-                            ${!isActive ? `<button class="btn-toggle" onclick="toggleCollapse('${type}', ${index})">${isCollapsed ? '▶' : '▼'}</button>` : ''}
-                        </div>
-                    </div>
-                    
-                    <div class="card-body ${isCollapsed ? 'hidden' : ''}">
-                        ${metaSection}
-                        
-                        <div class="notes-container">
-                            <div class="notes-view" id="notesView_${type}_${index}" onclick="editNotes('${type}', ${index})" style="display:${item.notes ? 'block' : 'none'}">${notesContent}</div>
-                            <textarea class="notes-edit" id="notesEdit_${type}_${index}" placeholder="Notes (URLs auto-link)..." onblur="saveNotes('${type}', ${index})" oninput="autoResize(this)" style="display:${item.notes ? 'none' : 'block'}">${esc(item.notes)}</textarea>
-                        </div>
-                        
-                        <div class="subtasks">
-                            <div style="display:flex; justify-content:space-between; align-items:center;">
-                                <small style="font-size:0.7rem; color:#64748b;">NEXT STEPS:</small>
-                                <button class="btn-done-toggle" onclick="toggleShowDone('${type}', ${index})">${item.showDone ? 'Hide Done' : 'Show Done'}</button>
-                            </div>
-                            ${subHTML}
-                            <div class="add-step-grid-row">
-                                <div></div>
-                                <input type="text" id="subInput_${type}_${index}" class="subtask-input" placeholder="Add step..." onkeypress="handleSubEnter(event, '${type}', ${index})" style="background:white; border:1px solid #cbd5e1;">
-                                <input type="date" id="subDate_${type}_${index}" class="sub-date-input" onkeypress="handleSubEnter(event, '${type}', ${index})">
-                                <input type="text" id="subEst_${type}_${index}" class="sub-est-input" placeholder="Est" onkeypress="handleSubEnter(event, '${type}', ${index})">
-                                <button class="btn-sm btn-action" onclick="addSub('${type}', ${index})">+</button>
-                            </div>
-                        </div>
-                        
-                        <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center; border-top:1px solid #e2e8f0; padding-top:8px;">
-                            <button class="btn-card-del" onclick="deleteTask('${type}', ${index})">Delete</button>
-                            <div style="display:flex; gap:5px;">${startBtn}<button class="btn-success" onclick="completeTask('${type}', ${index})">✅ Done</button></div>
-                        </div>
-                    </div>
-                </div>`;
         });
     }
 
     function renderTasks() { renderList('task', 'taskList'); }
     function renderTargets() { renderList('target', 'targetsList'); }
 
-    // --- NOTES LOGIC ---
+    function editTitle(type, i) {
+        const link = document.querySelector(`#taskList .card:nth-child(${i+1}) .title-link`) || document.querySelector(`#targetsList .target-card:nth-child(${i+1}) .title-link`);
+        const input = document.getElementById(`titleEdit_${type}_${i}`);
+        if(link) link.style.display = 'none';
+        if(input) { input.style.display = 'block'; input.focus(); }
+    }
+    function saveTitle(type, i) {
+        const input = document.getElementById(`titleEdit_${type}_${i}`);
+        if (!input) return;
+        const arr = (type === 'task') ? data.tasks : data.targets;
+        if(arr && arr[i]) arr[i].title = input.value;
+        saveData(); renderAll();
+    }
+
     function editNotes(type, i) {
         document.getElementById(`notesView_${type}_${i}`).style.display = 'none';
         const edit = document.getElementById(`notesEdit_${type}_${i}`);
@@ -588,12 +737,11 @@
     }
     function saveNotes(type, i) {
         const arr = (type === 'task') ? data.tasks : data.targets;
-        arr[i].notes = document.getElementById(`notesEdit_${type}_${i}`).value;
+        if(arr && arr[i]) arr[i].notes = document.getElementById(`notesEdit_${type}_${i}`).value;
         saveData();
         renderAll(); 
     }
 
-    // --- SUBTASK EDIT LOGIC ---
     function editSub(type, i, si) {
         document.getElementById(`subView_${type}_${i}_${si}`).style.display = 'none';
         const edit = document.getElementById(`subEdit_${type}_${i}_${si}`);
@@ -603,29 +751,28 @@
     function saveSub(type, i, si) {
         const arr = (type === 'task') ? data.tasks : data.targets;
         const val = document.getElementById(`subEdit_${type}_${i}_${si}`).value;
-        arr[i].subtasks[si].text = val;
+        if(arr && arr[i] && arr[i].subtasks[si]) arr[i].subtasks[si].text = val;
         saveData();
         renderAll();
     }
 
-    // --- LOGIC ---
     function updateTask(type, i, f, v) { 
         const arr = (type === 'task') ? data.tasks : data.targets;
-        arr[i][f] = v; 
+        if (arr && arr[i]) arr[i][f] = v; 
         saveData(); 
         if(['url','priority'].includes(f)) renderAll(); 
     }
 
     function toggleMeta(type, i) {
         const arr = (type === 'task') ? data.tasks : data.targets;
-        arr[i].showMeta = !arr[i].showMeta;
+        if(arr && arr[i]) arr[i].showMeta = !arr[i].showMeta;
         saveData();
         renderAll();
     }
 
     function toggleShowDone(type, i) {
         const arr = (type === 'task') ? data.tasks : data.targets;
-        arr[i].showDone = !arr[i].showDone;
+        if(arr && arr[i]) arr[i].showDone = !arr[i].showDone;
         saveData();
         renderAll();
     }
@@ -633,12 +780,12 @@
     function setTaskStatus(type, i, status) {
         const arr = (type === 'task') ? data.tasks : data.targets;
         if (status === 'active') {
-            data.tasks.forEach(t => t.status = 'todo');
-            data.targets.forEach(t => t.status = 'todo');
-            arr[i].status = 'active';
+            data.tasks.forEach(t => { if(t) t.status = 'todo' });
+            data.targets.forEach(t => { if(t) t.status = 'todo' });
+            if(arr && arr[i]) arr[i].status = 'active';
             toggleFocusMode(true, type, i);
         } else {
-            arr[i].status = 'todo';
+            if(arr && arr[i]) arr[i].status = 'todo';
         }
         saveData();
         renderAll();
@@ -648,10 +795,10 @@
         const setCollapse = (arr, isMainArr) => {
             arr.forEach((t, idx) => {
                 if (active) {
-                    if (isMainArr && idx === activeIndex) t.collapsed = false;
-                    else t.collapsed = true;
+                    if (isMainArr && idx === activeIndex) { if(t) t.collapsed = false; }
+                    else { if(t) t.collapsed = true; }
                 } else {
-                    t.collapsed = false;
+                    if(t) t.collapsed = false;
                 }
             });
         };
@@ -661,17 +808,18 @@
 
     function toggleAll(type) {
         const arr = (type === 'task') ? data.tasks : data.targets;
-        const anyExpanded = arr.some(t => !t.collapsed);
-        arr.forEach(t => t.collapsed = anyExpanded);
-        saveData();
-        renderAll();
+        const anyExpanded = arr.some(t => t && !t.collapsed);
+        arr.forEach(t => { if(t) t.collapsed = anyExpanded; });
+        saveData(); renderAll();
     }
 
     function renderCompleted() {
         const list = document.getElementById('completedList');
         if (!list) return;
         list.innerHTML = '';
+        if(!Array.isArray(data.completed)) return;
         data.completed.slice(0, 50).forEach((item) => {
+            if(!item) return;
             list.innerHTML += `
                 <div class="completed-item">
                     <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:10px;" title="${esc(item.title)}">${esc(item.title)}</span>
@@ -680,18 +828,42 @@
         });
     }
 
+    function completeTask(type, i) { 
+        if(confirm("Mark as Done?")) { 
+            const arr = (type === 'task') ? data.tasks : data.targets;
+            const t = arr[i]; 
+            
+            if (t) {
+                data.completed.unshift({
+                    title: t.title || "Untitled", 
+                    time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), 
+                    date: new Date().toLocaleDateString()
+                }); 
+            }
+            
+            arr.splice(i, 1); 
+            
+            if (t && t.status === 'active') {
+                data.tasks.forEach(task => { if(task) task.collapsed = false; });
+                data.targets.forEach(target => { if(target) target.collapsed = false; });
+            }
+            
+            saveData(); 
+            renderAll(); 
+        } 
+    }
+
     function clearCompleted() {
         if(confirm("Clear execution history?")) {
             data.completed = [];
-            saveData();
-            renderCompleted();
+            saveData(); renderCompleted();
         }
     }
 
     function toggleCollapse(type, index) {
         const arr = (type === 'task') ? data.tasks : data.targets;
-        if (arr[index].status === 'active') return;
-        arr[index].collapsed = !arr[index].collapsed;
+        if (arr && arr[index] && arr[index].status === 'active') return;
+        if (arr && arr[index]) arr[index].collapsed = !arr[index].collapsed;
         saveData(); renderAll();
     }
 
@@ -710,39 +882,43 @@
         const dateInput = document.getElementById(`subDate_${type}_${i}`); 
         const estInput = document.getElementById(`subEst_${type}_${i}`); 
         
-        if(txtInput.value){ 
+        if(txtInput && txtInput.value){ 
             const arr = (type === 'task') ? data.tasks : data.targets;
-            arr[i].subtasks.push({
-                text: txtInput.value,
-                done: false,
-                date: dateInput.value,
-                estimate: estInput.value
-            }); 
-            txtInput.value = ''; 
-            dateInput.value = '';
-            estInput.value = '';
-            saveData(); 
-            renderAll(); 
+            if(arr && arr[i]) {
+                arr[i].subtasks.push({
+                    text: txtInput.value,
+                    done: false,
+                    date: dateInput ? dateInput.value : "",
+                    estimate: estInput ? estInput.value : ""
+                }); 
+            }
+            if(txtInput) txtInput.value = ''; 
+            if(dateInput) dateInput.value = '';
+            if(estInput) estInput.value = '';
+            saveData(); renderAll(); 
             setTimeout(() => document.getElementById(`subInput_${type}_${i}`).focus(), 10);
         } 
     }
 
     function updateSub(type, ti, si, field, val) { 
         const arr = (type === 'task') ? data.tasks : data.targets;
-        arr[ti].subtasks[si][field] = val; 
+        if(arr && arr[ti] && arr[ti].subtasks[si]) arr[ti].subtasks[si][field] = val; 
         saveData(); 
         if(field === 'date') renderAll();
     }
 
     function toggleSub(type, ti, si) { 
         const arr = (type === 'task') ? data.tasks : data.targets;
-        arr[ti].subtasks[si].done = !arr[ti].subtasks[si].done; 
-        saveData(); 
-        renderAll(); 
+        if(arr && arr[ti] && arr[ti].subtasks[si]) arr[ti].subtasks[si].done = !arr[ti].subtasks[si].done; 
+        saveData(); renderAll(); 
     }
 
     function handleSubEnter(e, type, i) { if(e.key === 'Enter') addSub(type, i); }
-    function deleteSub(type, taskIndex, subIndex) { const arr = (type === 'task') ? data.tasks : data.targets; arr[taskIndex].subtasks.splice(subIndex,1); saveData(); renderAll(); }
+    function deleteSub(type, taskIndex, subIndex) { 
+        const arr = (type === 'task') ? data.tasks : data.targets; 
+        if(arr && arr[taskIndex] && arr[taskIndex].subtasks) arr[taskIndex].subtasks.splice(subIndex,1); 
+        saveData(); renderAll(); 
+    }
     
     function activateDrag(e, handle) {
         const draggableEl = handle.closest('.card, .target-card, .subtask-grid-row');
@@ -793,20 +969,44 @@
         e.stopPropagation();
         try {
             const d = JSON.parse(e.dataTransfer.getData("application/json"));
+            
+            // Case 1: Reorder Subtask within list
             if(d.type === 'subtask' && d.listType === targetListType && d.taskIndex === targetTaskIndex) {
                 const arr = (targetListType === 'task' ? data.tasks : data.targets)[targetTaskIndex].subtasks;
                 const item = arr.splice(d.subIndex, 1)[0];
                 arr.splice(targetSubIndex, 0, item);
                 saveData(); renderAll();
             }
+            // Case 2: Inbox Item -> Subtask Insert
+            else if (d.type === 'inbox') {
+                const item = data.inbox[d.index];
+                const targetArr = (targetListType === 'task' ? data.tasks : data.targets)[targetTaskIndex].subtasks;
+                
+                const newSub = { text: item.text, done: false, date: "", estimate: "" };
+                targetArr.splice(targetSubIndex, 0, newSub);
+                
+                data.inbox.splice(d.index, 1);
+                saveData(); renderAll();
+            }
         } catch(e) {}
     }
     function deleteTask(type, i) { if(confirm("Delete?")) { const arr = (type === 'task') ? data.tasks : data.targets; arr.splice(i,1); saveData(); renderAll(); } }
-    function renderInbox() { const l=document.getElementById('inboxList'); l.innerHTML=''; data.inbox.forEach((m,i)=>{ l.innerHTML+=`<div class="card" style="padding:8px;" draggable="true" ondragstart="handleDragStart(event,${i},'inbox')" ondragend="handleDragEnd(event)"><div style="margin-bottom:4px; font-size:0.9rem;">${esc(m.text)}</div><div style="display:flex; gap:5px;"><button class="btn-sm btn-success" onclick="promoteToTask(${i})">Task</button><button class="btn-sm btn-danger" onclick="deleteInbox(${i})">×</button></div></div>`; }); }
-    function addInboxItem() { const i=document.getElementById('inboxInput'); if(i.value){ data.inbox.unshift({text:i.value}); i.value=''; saveData(); renderInbox(); } }
+    
+    function renderInbox() { 
+        const l=document.getElementById('inboxList'); 
+        if (!l) return;
+        l.innerHTML=''; 
+        if(!Array.isArray(data.inbox)) return;
+        data.inbox.forEach((m,i)=>{ 
+            if(!m) return;
+            l.innerHTML+=`<div class="card" style="padding:8px;" draggable="true" ondragstart="handleDragStart(event,${i},'inbox')" ondragend="handleDragEnd(event)"><div style="margin-bottom:4px; font-size:0.9rem;">${esc(m.text)}</div><div style="display:flex; gap:5px;"><button class="btn-sm btn-success" onclick="promoteToTask(${i})">Task</button><button class="btn-sm btn-danger" onclick="deleteInbox(${i})">×</button></div></div>`; 
+        }); 
+    }
+    function addInboxItem() { const i=document.getElementById('inboxInput'); if(i && i.value){ data.inbox.unshift({text:i.value}); i.value=''; saveData(); renderInbox(); } }
     function handleInboxEnter(e) { if(e.key==='Enter') addInboxItem(); }
     function deleteInbox(i) { data.inbox.splice(i,1); saveData(); renderInbox(); }
     function promoteToTask(i) { const m=data.inbox[i]; data.tasks.unshift({title:m.text, jiraId:"", priority:"Medium", dueDate:"", status:'todo', subtasks:[], notes:"", url:"", estimate:"25m", collapsed:false, showMeta:true, showDone:true}); data.inbox.splice(i,1); saveData(); renderAll(); }
+    
     function exportCSV() { if(data.completed.length===0) { alert("No data"); return; } let c="data:text/csv;charset=utf-8,Task,Date,Time\n"; data.completed.forEach(r=>{ c+=`"${r.title.replace(/"/g,'""')}","${r.date||''}","${r.time||''}"\r\n`; }); const e=encodeURI(c); const l=document.createElement("a"); l.href=e; l.download="tasks.csv"; document.body.appendChild(l); l.click(); document.body.removeChild(l); }
     function clearData() { if(confirm("⚠ RESET ALL DATA?")) { localStorage.clear(); location.reload(); } }
     function startClock() { const clock = document.getElementById('clock'); if(!clock) return; const u=()=>clock.innerText=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); u(); setInterval(u,1000); }
